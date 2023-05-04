@@ -1,107 +1,92 @@
-import { Component } from 'react';
-import SearchBar from './Searchbar/Searchbar';
-import { ImageGallery } from './ImageGallery/ImageGallery';
-import fetchPixabay from 'services/fetchPixabay';
-import { Loader } from './Loader/Loader';
+import { useEffect, useState } from 'react';
+
 import { ToastContainer, Slide } from 'react-toastify';
+import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+
+import {Searchbar} from './Searchbar/Searchbar';
+import { ImageGallery } from './ImageGallery/ImageGallery';
+import { fetchPixabay } from 'services/fetchPixabay';
+import { Loader } from './Loader/Loader';
 import { Button } from './Button/Button';
+import { notifyOptions } from 'utils/notify';
 
+export const App = () => {
+  const [search, setSearch] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [images, setImages] = useState([]);
 
-export default class App extends Component {
-  state = {
-    search: '',
-    loading: false,
-    error: null,
-    page: 1,
-    totalPages: 0,
-    images: [],
-  };
-  // render > didMount > getItem > setState > update > render > didUpdate > setItem
-  componentDidUpdate(_, prevState) {
-    const { search, page } = this.state;
-    if (prevState.search !== search || prevState.page !== page) {
-      this.getImages(search, page);
+  useEffect(() => {
+    if (!search) return;
+    if (page === 1) {
+      setImages([]);
     }
-    // if (prevState.search === search) {
-    //   return toast.info(
-    //     'Please enter another key words for search',
-    //     notifyOptions
-    //   );
-    // }
-  }
-  getImages = (value, page) => {
-    this.setState({ loading: true }); // вмикаємо індикатор завантаження
-    if (this.state.error) {
-      this.setState({ error: null });
+    (async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        const dataImages = await fetchPixabay(page, search);
+        // console.log(search);
+        // console.log(dataImages);
+        setImages(prevImages => [...prevImages, ...dataImages.hits]);
+        if (!dataImages.hits.length) {
+          return toast.error(
+            'We not found images. Please, enter another phrase.',
+            notifyOptions
+          );
+        }
+        setTotalPages(Math.floor(dataImages.totalHits / 12));
+      } catch (error) {
+        console.log(error.message);
+      } finally {
+        setIsLoading(false);
+      }
+    })();
+  }, [page, search]);
+
+  const onLoadMore = () => {
+    setPage(prevState => prevState + 1);
+  };
+
+  const handleSubmit = value => {
+    if (value === search) {
+      return toast.info(
+        'We already found images. Please, enter another phrase.',
+        notifyOptions
+      );
     }
-    // Викликаємо функцію getSearch, яка виконує запит на сервер.
-    fetchPixabay(value, page)
-      .then(dataImages => {
-        console.log(dataImages);
-        // if (value === this.state.search) {
-        //   return toast.info('Please enter another key words for search', notifyOptions);
-        // }
-        this.setState(prevState => ({
-          page: prevState.page,
-          images:
-            page === 1
-              ? dataImages.hits
-              : [...prevState.images, ...dataImages.hits], // додаємо нові картинки до масиву
-          totalPages: Math.floor(dataImages.totalHits / 12),
-        }));
-      })
-      .catch(error => {
-        this.setState({ error: error.message }); // записуємо помилку в стейт
-      })
-      .finally(this.setState({ loading: false }));
+    setSearch(value);
+    setPage(1);
   };
 
-  onLoadMore = () => {
-    this.setState(prevState => ({
-      page: prevState.page + 1, // збільшуємо номер сторінки на +1
-    }));
-  };
+  return (
+    <>
+      <div>
+        <Searchbar onSubmit={handleSubmit} />
 
-  handleSubmit = search => {
-    this.setState({
-      search: search,
-      loading: false,
-      error: null,
-      page: 1,
-      totalPages: 0,
-      images: [],
-    });
-  };
+        {/* Перевіряємо, чи відбувається завантаження */}
+        {isLoading && <Loader />}
 
-  render() {
-    const { images, error, loading, page, totalPages } = this.state;
-    return (
-      <>
-        <div>
-          <SearchBar onSubmit={this.handleSubmit} />
+        {/* Перевіряємо, чи є помилка */}
+        {error && !isLoading && (
+          <h2 style={{ textAlign: 'center' }}>
+            Try again. Something went wrong!
+          </h2>
+        )}
+        {totalPages === 0 && !images && (
+          <h2 style={{ textAlign: 'center' }}>Try again. Photos not found!</h2>
+        )}
+        <ImageGallery images={images} />
+        {images.length > 0 && !isLoading && page <= totalPages && (
+          <Button onClick={onLoadMore} />
+        )}
+      </div>
+      <ToastContainer transition={Slide} draggablePercent={60} />
+    </>
+  );
+};
 
-          {/* Перевіряємо, чи відбувається завантаження */}
-          {loading && <Loader />}
-
-          {/* Перевіряємо, чи є помилка */}
-          {error && !loading && (
-            <h2 style={{ textAlign: 'center' }}>
-              Try again. Something went wrong!
-            </h2>
-          )}
-          {totalPages === 0 && !images && (
-            <h2 style={{ textAlign: 'center' }}>
-              Try again. Photos not found!
-            </h2>
-          )}
-          <ImageGallery images={images} />
-          {images.length > 0 && !loading && page <= totalPages && (
-            <Button onClick={this.onLoadMore} />
-          )}
-        </div>
-        <ToastContainer transition={Slide} draggablePercent={60} />
-      </>
-    );
-  }
-}
